@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Budget Traveller with Coupons</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f7f7f5;--card:#fff;--tx:#1d1d1f;--mut:#6b6b70;--bd:#d9d9de;--edge:#9a9aa5;--path:#2563eb;--gold:#d99a00;--accent:#2563eb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--card:#1e1e22;--tx:#eee;--mut:#9a9aa5;--bd:#38383f;--edge:#6b6b78;--path:#60a5fa;--gold:#fbbf24;--accent:#60a5fa}}
+:root[data-theme="dark"]{--bg:#141416;--card:#1e1e22;--tx:#eee;--mut:#9a9aa5;--bd:#38383f;--edge:#6b6b78;--path:#60a5fa;--gold:#fbbf24;--accent:#60a5fa}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:12px}
+h1{font-size:19px;margin:0 0 10px}
+.wrap{display:grid;gap:12px;grid-template-columns:minmax(0,320px) minmax(0,1fr);max-width:1200px;margin:auto}
+@media(max-width:820px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px}
+label{display:block;font-size:12px;color:var(--mut);margin:6px 0 2px}
+input,textarea,select{width:100%;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px;font:inherit}
+textarea{font-family:ui-monospace,monospace;height:130px;resize:vertical}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer;margin:6px 6px 0 0}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.stat{background:var(--bg);border-radius:8px;padding:6px 8px}.stat b{display:block;font-size:18px}.stat span{font-size:11px;color:var(--mut)}
+svg{width:100%;height:auto;background:var(--bg);border-radius:8px;display:block}
+#msg{margin:8px 0 0;min-height:20px}
+.leg{font-size:12px;color:var(--mut);margin-top:6px}.leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 3px 0 8px}
+.hide{display:none}
+</style></head><body>
+<h1>✈ Budget Traveller with Coupons</h1>
+<div class="wrap">
+<div class="card">
+<label>Input mode</label>
+<select id="mode"><option value="1">1 · Manual text</option><option value="2">2 · CSV file</option><option value="3">3 · Generate random</option></select>
+<div id="m1"><label>N M / K C / M lines of "u v p"</label>
+<textarea id="txt">6 9
+2 1
+1 2 100
+2 6 100
+1 3 40
+3 4 30
+4 6 30
+1 5 10
+5 6 200
+3 6 120
+2 3 20</textarea></div>
+<div id="m2" class="hide"><div class="row"><div><label>K (max stops)</label><input id="k2" type="number" value="2" min="0"></div><div><label>C (coupons)</label><input id="c2" type="number" value="1" min="0"></div></div>
+<label>CSV (u,v,price per row; header ok)</label><input id="file" type="file" accept=".csv,text/csv"></div>
+<div id="m3" class="hide"><div class="row"><div><label>K</label><input id="k3" type="number" value="2" min="0"></div><div><label>C</label><input id="c3" type="number" value="2" min="0"></div></div>
+<div class="row"><div><label>Cities N</label><input id="n3" type="number" value="8" min="2" max="30"></div><div><label>Flights M</label><input id="m3n" type="number" value="16" min="1"></div></div></div>
+<button id="go">Solve &amp; visualize</button><button class="sec" id="dl">Download CSV</button>
+<p id="msg"></p>
+<p class="leg" style="line-height:1.8">Algorithm: layered DP over (flights used, city, coupons used), O((K+1)·M·C); at most K stops = K+1 flights; a coupon makes a flight cost ⌊p/2⌋.</p>
+</div>
+<div class="card">
+<div class="stats"><div class="stat"><b id="sCost">–</b><span>running cost</span></div><div class="stat"><b id="sStops">–</b><span>stops used / K</span></div><div class="stat"><b id="sCoup">–</b><span>coupons used / C</span></div><div class="stat"><b id="sBest">–</b><span>min cost</span></div></div>
+<svg id="svg" viewBox="0 0 700 520"></svg>
+<div class="leg"><i style="background:#16a34a"></i>start<i style="background:#dc2626"></i>destination<i style="background:#f59e0b"></i>stops<i style="background:var(--path)"></i>path<i style="background:var(--gold)"></i>coupon flight</div>
+<button id="play">▶ Replay journey</button>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+let G=null,RES=null,timer=null,csvText='';
+$('mode').onchange=()=>{for(const i of[1,2,3])$('m'+i).classList.toggle('hide',$('mode').value!=i)};
+
+function solve(N,K,C,E){
+  if(N===1)return{cost:0,path:[]};
+  const F=K+1,W=C+1,INF=1e18,S=(N+1)*W;
+  const dp=Array.from({length:F+1},()=>new Float64Array(S).fill(INF));
+  const par=Array.from({length:F+1},()=>new Int32Array(S*2).fill(-1)); // edge idx*2+coupon, prev c
+  dp[0][1*W+0]=0;
+  for(let f=0;f<F;f++)for(let i=0;i<E.length;i++){
+    const[u,v,p]=E[i];
+    for(let c=0;c<=C;c++){
+      const d=dp[f][u*W+c];if(d>=INF)continue;
+      let t=v*W+c;
+      if(d+p<dp[f+1][t]){dp[f+1][t]=d+p;par[f+1][t*2]=i*2;par[f+1][t*2+1]=c}
+      if(c<C){t=v*W+c+1;const q=d+(p>>1);
+        if(q<dp[f+1][t]){dp[f+1][t]=q;par[f+1][t*2]=i*2+1;par[f+1][t*2+1]=c}}
+    }
+  }
+  let best=INF,bf=-1,bc=-1;
+  for(let f=1;f<=F;f++)for(let c=0;c<=C;c++){const d=dp[f][N*W+c];if(d<best){best=d;bf=f;bc=c}}
+  if(best>=INF)return{cost:-1,path:[]};
+  const path=[];let f=bf,c=bc,v=N;
+  while(f>0){const t=v*W+c,e=par[f][t*2],pc=par[f][t*2+1];
+    const ei=e>>1;path.push({e:ei,coupon:e&1});v=E[ei][0];c=pc;f--}
+  return{cost:best,path:path.reverse()};
+}
+
+function parseText(s){
+  const t=s.split(/[\s,]+/).filter(Boolean).map(Number);
+  if(t.some(isNaN)||t.length<4)throw'Bad input';
+  const[N,M,K,C]=t;const E=[];
+  for(let i=0;i<M;i++){const b=4+3*i;if(b+2>=t.length+0&&b+2>t.length-1)throw'Fewer than M flights';E.push([t[b],t[b+1],t[b+2]])}
+  return{N,K,C,E};
+}
+function parseCSV(s,K,C){
+  const E=[];let N=2;
+  for(const ln of s.split(/\r?\n/)){const p=ln.split(',').map(x=>x.trim());
+    if(p.length<3||p.slice(0,3).some(x=>x===''||isNaN(x)))continue;
+    E.push(p.slice(0,3).map(Number));N=Math.max(N,+p[0],+p[1])}
+  return{N,K,C,E};
+}
+function generate(N,M,K,C){
+  const E=[],seen=new Set(),r=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+  const add=(u,v,p)=>{if(u===v||seen.has(u+'-'+v))return false;seen.add(u+'-'+v);E.push([u,v,p]);return true};
+  // guarantee a feasible route 1 -> N using at most K stops
+  const len=Math.min(K+1,N-1),mids=[];
+  const pool=[];for(let i=2;i<N;i++)pool.push(i);
+  pool.sort(()=>Math.random()-.5);const chain=[1,...pool.slice(0,len-1),N];
+  for(let i=0;i<chain.length-1;i++)add(chain[i],chain[i+1],r(20,120));
+  M=Math.min(Math.max(M,E.length),N*(N-1));
+  let guard=0;while(E.length<M&&guard++<5000)add(r(1,N),r(1,N),r(10,200));
+  return{N,K,C,E};
+}
+
+function layout(N){
+  const pos=[null],cx=350,cy=260,R=Math.min(210,70+N*14);
+  for(let i=1;i<=N;i++){const a=-Math.PI/2+2*Math.PI*(i-1)/N;pos.push([cx+R*Math.cos(a)*1.25,cy+R*Math.sin(a)])}
+  return pos;
+}
+const NS='http://www.w3.org/2000/svg';
+function el(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);(p||$('svg')).appendChild(e);return e}
+let edgeEls=[];
+function draw(){
+  const{N,E}=G,svg=$('svg');svg.innerHTML='';edgeEls=[];
+  const pos=layout(N),onPath=new Set(RES.path.map(s=>s.e));
+  const stops=new Set();RES.path.forEach((s,i)=>{if(i>0)stops.add(G.E[s.e][0])});
+  const defs=el('defs',{});
+  for(const[id,col]of[['a','var(--edge)'],['b','var(--path)'],['g','var(--gold)']]){
+    const m=el('marker',{id:'m'+id,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);
+    el('path',{d:'M0 0L10 5L0 10z',fill:col},m)}
+  const has=new Set(E.map(e=>e[0]+'-'+e[1]));
+  E.forEach(([u,v,p],i)=>{
+    const[x1,y1]=pos[u],[x2,y2]=pos[v];
+    const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L;
+    const bend=has.has(v+'-'+u)?22:(E.some((e,j)=>j<i&&e[0]===u&&e[1]===v)?-30:0);
+    const mx=(x1+x2)/2+nx*bend*2,my=(y1+y2)/2+ny*bend*2;
+    // shorten to node radius
+    const r=18,sx=x1+(mx-x1)/Math.hypot(mx-x1,my-y1)*r,sy=y1+(my-y1)/Math.hypot(mx-x1,my-y1)*r;
+    const ex=x2+(mx-x2)/Math.hypot(mx-x2,my-y2)*(r+4),ey=y2+(my-y2)/Math.hypot(mx-x2,my-y2)*(r+4);
+    const path=el('path',{d:`M${sx} ${sy}Q${mx} ${my} ${ex} ${ey}`,fill:'none',stroke:'var(--edge)','stroke-width':1.3,opacity:onPath.has(i)?.9:.55,'marker-end':'url(#ma)'});
+    const lx=.25*sx+.5*mx+.25*ex,ly=.25*sy+.5*my+.25*ey;
+    const lab=el('text',{x:lx,y:ly-3,'text-anchor':'middle','font-size':11,fill:'var(--mut)',stroke:'var(--bg)','stroke-width':3,'paint-order':'stroke'});
+    lab.textContent=p;
+    edgeEls[i]={path,lab,p};
+  });
+  for(let i=1;i<=N;i++){
+    const col=i===1?'#16a34a':i===N?'#dc2626':stops.has(i)?'#f59e0b':'var(--card)';
+    const g=el('g',{});
+    el('circle',{cx:pos[i][0],cy:pos[i][1],r:18,fill:col,stroke:col==='var(--card)'?'var(--edge)':col,'stroke-width':2},g);
+    const t=el('text',{x:pos[i][0],y:pos[i][1]+4,'text-anchor':'middle','font-size':13,'font-weight':600,fill:col==='var(--card)'?'var(--tx)':'#fff'},g);t.textContent=i}
+}
+
+function stepEdge(i,s,coupon,state){
+  const e=edgeEls[s.e],p=e.p;
+  e.path.setAttribute('stroke',coupon?'var(--gold)':'var(--path)');
+  e.path.setAttribute('stroke-width',3.5);e.path.setAttribute('opacity',1);
+  e.path.setAttribute('marker-end',coupon?'url(#mg)':'url(#mb)');
+  e.lab.setAttribute('fill',coupon?'var(--gold)':'var(--path)');e.lab.setAttribute('font-weight',700);
+  e.lab.textContent=coupon?`${p} → ${p>>1}`:p;
+  $('sCost').textContent=state.cost;$('sStops').textContent=`${Math.max(0,i)} / ${G.K}`;
+  $('sCoup').textContent=`${state.coup} / ${G.C}`;
+}
+function play(){
+  clearInterval(timer);draw();
+  $('sCost').textContent=0;$('sStops').textContent=`0 / ${G.K}`;$('sCoup').textContent=`0 / ${G.C}`;
+  const st={cost:0,coup:0};let i=0;
+  if(!RES.path.length)return;
+  timer=setInterval(()=>{
+    if(i>=RES.path.length){clearInterval(timer);return}
+    const s=RES.path[i];st.cost+=s.coupon?G.E[s.e][2]>>1:G.E[s.e][2];st.coup+=s.coupon;
+    stepEdge(i,s,s.coupon,st);i++;
+    $('sStops').textContent=`${Math.max(0,i-1)} / ${G.K}`;
+  },1100);
+}
+
+function buildCSV(){
+  const used=new Map(RES.path.map(s=>[s.e,s.coupon]));
+  const rows=['from,to,price,on_path,coupon_used,paid'];
+  G.E.forEach(([u,v,p],i)=>{
+    const on=used.has(i),cp=on&&used.get(i);
+    rows.push(`${u},${v},${p},${on?'x':''},${cp?'x':''},${on?(cp?p>>1:p):''}`)});
+  rows.push(`# min_cost,${RES.cost}`);
+  return rows.join('\n');
+}
+
+function run(){
+  try{
+    const m=$('mode').value;
+    if(m==='1'){const g=parseText($('txt').value);G=g}
+    else if(m==='2'){if(!csvText)throw'Choose a CSV file first';G=parseCSV(csvText,+$('k2').value,+$('c2').value)}
+    else{G=generate(+$('n3').value,+$('m3n').value,+$('k3').value,+$('c3').value)}
+    if(G.E.some(e=>e[0]<1||e[1]<1||e[0]>G.N||e[1]>G.N))throw'City id out of range';
+    RES=solve(G.N,G.K,G.C,G.E);
+    csvText2=buildCSV();
+    $('sBest').textContent=RES.cost;
+    $('msg').textContent=RES.cost<0?'Output: -1 (no route within K stops)':`Output: ${RES.cost}  (path ${[1,...RES.path.map(s=>G.E[s.e][1])].join(' → ')})`;
+    play();
+    if(m==='1'||m==='3')console.log(csvText2);
+  }catch(e){$('msg').textContent='Error: '+e}
+}
+let csvText2='';
+$('go').onclick=run;$('play').onclick=()=>RES&&play();
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{csvText=r.result};r.readAsText(f)};
+$('dl').onclick=()=>{if(!RES)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText2],{type:'text/csv'}));a.download='route_result.csv';a.click()};
+run();
+</script></body></html>

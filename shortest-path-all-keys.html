@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>864. Shortest Path to Get All Keys - visualized</title>
+<style>
+:root{--bg:#171c24;--panel:#1f2630;--cell:#2b3441;--wall:#10141a;--ink:#e8e4d9;--mute:#9aa4b2;--key:#e3b04b;--lock:#d96a4e;--start:#5bbcb0;--line:#3a4556}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 16px 48px}
+main{max-width:860px;margin:0 auto}
+h1{font:500 24px/1.3 Georgia,"Times New Roman",serif;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 24px;max-width:62ch}
+.layout{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.board{display:grid;grid-template-columns:repeat(5,var(--s));grid-auto-rows:var(--s);gap:6px;--s:clamp(52px,13vw,76px);position:relative}
+.cell{position:relative;background:var(--cell);border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;font:500 22px Georgia,serif;transition:background .25s,border-color .25s}
+.cell.wall{background:repeating-linear-gradient(45deg,#10141a 0 6px,#171c24 6px 12px);border-color:#10141a;color:#3a4556}
+.cell.key{color:var(--key);border-color:var(--key)}
+.cell.lock{color:var(--lock);border-color:var(--lock)}
+.cell.lock.open{border-style:dashed;opacity:.75}
+.cell.start{color:var(--start);border-color:var(--start)}
+.cell.seen{background:#34506a}
+.cell.key.got{background:#4a3f22}
+.n{position:absolute;top:3px;left:6px;font:12px system-ui,sans-serif;color:var(--mute)}
+.tok{position:absolute;width:calc(var(--s) * .34);height:calc(var(--s) * .34);border-radius:50%;background:var(--ink);border:3px solid var(--bg);box-shadow:0 0 0 2px var(--ink);bottom:6px;right:6px;transition:transform .35s ease;pointer-events:none}
+.side{flex:1 1 280px;min-width:260px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h2{font:500 14px system-ui,sans-serif;color:var(--mute);margin:0 0 8px}
+.state{font:500 18px ui-monospace,Consolas,monospace}
+.keys{display:flex;gap:10px}
+.slot{width:44px;height:44px;border-radius:6px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font:500 20px Georgia,serif;color:var(--line)}
+.slot.on{border:1px solid var(--key);color:var(--key);background:#4a3f22}
+#msg{min-height:3.2em;margin:0}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 14px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--mute)}
+button:focus-visible{outline:2px solid var(--start);outline-offset:2px}
+button.main{background:var(--start);color:#10141a;border-color:var(--start);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:20px;color:var(--mute);font-size:14px}
+.legend b{font:500 15px Georgia,serif;margin-right:4px}
+.k{color:var(--key)}.l{color:var(--lock)}.s{color:var(--start)}
+pre{margin:0;font:14px/1.6 ui-monospace,Consolas,monospace;color:var(--mute);white-space:pre-wrap}
+@media (prefers-reduced-motion:reduce){.tok,.cell{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>864. Shortest path to get all keys</h1>
+<p class="sub">Walk the grid, pick up every lowercase key, and only pass an uppercase lock once you hold its key. Step through the shortest route for grid <code>["@.a..","###.#","b.A.B"]</code>.</p>
+
+<div class="layout">
+  <div>
+    <div class="board" id="board" role="img" aria-label="3 by 5 grid showing the shortest route"></div>
+    <div class="legend">
+      <span><b class="s">@</b>start</span>
+      <span><b class="k">a b</b>keys</span>
+      <span><b class="l">A B</b>locks</span>
+      <span><b>#</b>wall</span>
+      <span>small number = move count</span>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card"><h2>Move</h2><p id="msg" aria-live="polite"></p>
+      <div class="ctl">
+        <button id="prev">Back</button>
+        <button id="next" class="main">Next move</button>
+        <button id="play">Play</button>
+        <button id="reset">Reset</button>
+      </div>
+    </div>
+    <div class="card"><h2>BFS state: (row, col, keys_mask)</h2><div class="state" id="state"></div></div>
+    <div class="card"><h2>Keys held</h2><div class="keys" id="keys"></div></div>
+    <div class="card"><h2>Core idea</h2>
+<pre>start BFS at (sr, sc, 0)
+key  -> mask |= 1 << (ch - 'a')
+lock -> need mask & (1 << (ch - 'A'))
+done when mask == (1 << k) - 1
+queue empty -> return -1</pre></div>
+  </div>
+</div>
+</main>
+
+<script>
+const GRID = ["@.a..","###.#","b.A.B"];
+const PATH = [[0,0],[0,1],[0,2],[0,3],[1,3],[2,3],[2,2],[2,1],[2,0]];
+const MSG = [
+  "Start at @ holding no keys. Mask is 00.",
+  "Move right. Empty cell.",
+  "Reached key a. Pick it up: mask |= 1 << 0.",
+  "Keep going right. The walls below force us through this column.",
+  "Move down through the only gap in the wall row.",
+  "Move down again to the bottom row.",
+  "Step onto lock A. Allowed, because mask & (1 << 0) is set.",
+  "Move left. Empty cell.",
+  "Reached key b. Mask is 11, which equals (1 << 2) - 1. All keys collected: answer is 8 moves."
+];
+const K = 2;
+const board = document.getElementById('board');
+const cells = {}, num = {};
+for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) {
+  const ch = GRID[r][c], d = document.createElement('div');
+  d.className = 'cell';
+  if (ch === '#') d.classList.add('wall');
+  else if (ch === '@') d.classList.add('start');
+  else if (ch >= 'a' && ch <= 'z') d.classList.add('key');
+  else if (ch >= 'A' && ch <= 'Z') d.classList.add('lock');
+  if (ch !== '.') d.appendChild(document.createTextNode(ch));
+  const n = document.createElement('span'); n.className = 'n'; d.appendChild(n);
+  board.appendChild(d); cells[r + ',' + c] = d; num[r + ',' + c] = n;
+}
+const tok = document.createElement('div'); tok.className = 'tok'; board.appendChild(tok);
+const keysEl = document.getElementById('keys');
+for (let i = 0; i < K; i++) { const s = document.createElement('div'); s.className = 'slot'; s.textContent = String.fromCharCode(97 + i); keysEl.appendChild(s); }
+
+let step = 0, timer = null;
+function render() {
+  let mask = 0;
+  Object.values(cells).forEach(c => c.classList.remove('seen', 'got', 'open'));
+  Object.values(num).forEach(n => n.textContent = '');
+  for (let i = 0; i <= step; i++) {
+    const [r, c] = PATH[i], ch = GRID[r][c], el = cells[r + ',' + c];
+    el.classList.add('seen'); num[r + ',' + c].textContent = i;
+    if (ch >= 'a' && ch <= 'z') { mask |= 1 << (ch.charCodeAt(0) - 97); el.classList.add('got'); }
+  }
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) {
+    const ch = GRID[r][c];
+    if (ch >= 'A' && ch <= 'Z' && (mask & (1 << (ch.charCodeAt(0) - 65)))) cells[r + ',' + c].classList.add('open');
+  }
+  const [r, c] = PATH[step], t = cells[r + ',' + c];
+  tok.style.transform = `translate(${t.offsetLeft - 0}px, ${t.offsetTop}px)`;
+  tok.style.left = '0'; tok.style.top = '0'; tok.style.bottom = 'auto'; tok.style.right = 'auto';
+  tok.style.marginLeft = (t.offsetWidth - tok.offsetWidth - 6) + 'px';
+  tok.style.marginTop = (t.offsetHeight - tok.offsetHeight - 6) + 'px';
+  document.getElementById('msg').textContent = `Move ${step}: ${MSG[step]}`;
+  document.getElementById('state').textContent = `(${r}, ${c}, ${mask.toString(2).padStart(K, '0')})`;
+  [...keysEl.children].forEach((s, i) => s.classList.toggle('on', !!(mask & (1 << i))));
+  document.getElementById('prev').disabled = step === 0;
+  document.getElementById('next').disabled = step === PATH.length - 1;
+}
+function stop() { clearInterval(timer); timer = null; document.getElementById('play').textContent = 'Play'; }
+document.getElementById('next').onclick = () => { stop(); if (step < PATH.length - 1) { step++; render(); } };
+document.getElementById('prev').onclick = () => { stop(); if (step > 0) { step--; render(); } };
+document.getElementById('reset').onclick = () => { stop(); step = 0; render(); };
+document.getElementById('play').onclick = () => {
+  if (timer) return stop();
+  if (step === PATH.length - 1) step = 0;
+  render();
+  document.getElementById('play').textContent = 'Pause';
+  timer = setInterval(() => { if (step < PATH.length - 1) { step++; render(); } else stop(); }, 900);
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') document.getElementById('next').click();
+  if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+});
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>

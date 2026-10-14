@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closest pair of points - brute force vs divide and conquer</title>
+<style>
+:root{--bg:#171c24;--panel:#1f2630;--ink:#e8e4d9;--mute:#9aa4b2;--line:#3a4556;--bf:#ef6a55;--dc:#5aa9e6;--strip:#e3b04b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px 16px 40px}
+main{max-width:1100px;margin:0 auto}
+h1{font:500 24px/1.3 Georgia,serif;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 18px}
+.layout{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+.left{flex:2 1 520px;min-width:300px}.right{flex:1 1 320px;min-width:280px}
+canvas{width:100%;height:auto;background:#10141a;border:1px solid var(--line);border-radius:8px;display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.card h2{font:500 13px system-ui,sans-serif;color:var(--mute);margin:0 0 8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+label{color:var(--mute);font-size:14px}
+input[type=number]{width:96px;background:#10141a;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--mute)}button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--dc);outline-offset:2px}
+button.main{background:var(--dc);color:#10141a;border-color:var(--dc);font-weight:500}
+.out{font:13px/1.7 ui-monospace,Consolas,monospace;white-space:pre-wrap;margin:0}
+.bf{color:var(--bf)}.dc{color:var(--dc)}
+#status{color:var(--mute);font-size:14px;min-height:1.5em;margin:8px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Closest pair of points</h1>
+<p class="sub">Brute force O(n²) against divide and conquer O(n log n): the pairs each finds, the dividing line and strip of width 2d, an animation of the recursion, and running time against N.</p>
+<div class="layout">
+  <div class="left">
+    <canvas id="plot" width="760" height="560" role="img" aria-label="Scatter plot of points with closest pairs highlighted"></canvas>
+    <div class="row">
+      <button id="anim" class="main">Animate split / merge</button>
+      <button id="step">Step</button>
+      <button id="stop">Show final</button>
+      <label><input type="checkbox" id="showStrip" checked> dividing line and strip</label>
+    </div>
+    <p id="status" aria-live="polite"></p>
+  </div>
+  <div class="right">
+    <div class="card"><h2>Input</h2>
+      <div class="row" style="margin-top:0">
+        <label for="n">N</label><input type="number" id="n" value="60" min="0" max="20000">
+        <label for="kind">points</label>
+        <select id="kind" style="background:#10141a;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px">
+          <option value="float">random floats</option><option value="mixed">ints + floats</option><option value="grid">small int grid (duplicates)</option><option value="line">collinear</option>
+        </select>
+        <button id="gen" class="main">Generate and run</button>
+      </div>
+    </div>
+    <div class="card"><h2>Output</h2><pre class="out" id="out"></pre></div>
+    <div class="card"><h2>Running time vs N</h2>
+      <canvas id="chart" width="520" height="340" role="img" aria-label="Running time against N for both algorithms"></canvas>
+      <div class="row"><button id="bench">Run benchmark</button><label><input type="checkbox" id="log" checked> log-log</label></div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const plot = $('plot'), pg = plot.getContext('2d'), chart = $('chart'), cg = chart.getContext('2d');
+const BF = '#ef6a55', DC = '#5aa9e6', STRIP = '#e3b04b';
+let pts = [], bf = null, dc = null, evIdx = -1, timer = null, rows = [];
+
+function generate(n, kind) {
+  const p = [];
+  for (let i = 0; i < n; i++) {
+    let x, y;
+    if (kind === 'mixed') { x = Math.random() < .5 ? Math.floor(Math.random() * 1000) : Math.random() * 1000; y = Math.random() < .5 ? Math.floor(Math.random() * 1000) : Math.random() * 1000; }
+    else if (kind === 'grid') { x = Math.floor(Math.random() * 12); y = Math.floor(Math.random() * 12); }
+    else if (kind === 'line') { x = Math.random() * 1000; y = 2 * x + 50; }
+    else { x = Math.random() * 1000; y = Math.random() * 1000; }
+    p.push({ x, y });
+  }
+  return p;
+}
+
+function offer(r, p, q) { const dx = p.x - q.x, dy = p.y - q.y, v = dx * dx + dy * dy; if (v < r.d2) { r.d2 = v; r.a = p; r.b = q; } }
+
+function brute(p) {
+  const r = { d2: Infinity, a: null, b: null };
+  for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) offer(r, p[i], p[j]);
+  return r;
+}
+
+function divide(pts0, record) {
+  const r = { d2: Infinity, a: null, b: null, splitX: NaN, stripD: NaN, events: record ? [] : null };
+  const n = pts0.length;
+  if (n < 2) return r;
+  const a = pts0.slice().sort((p, q) => p.x - q.x || p.y - q.y), t = new Array(n);
+  (function solve(lo, hi, depth) {
+    if (hi - lo <= 3) {
+      for (let i = lo; i < hi; i++) for (let j = i + 1; j < hi; j++) offer(r, a[i], a[j]);
+      for (let i = lo + 1; i < hi; i++) { const k = a[i]; let j = i - 1; while (j >= lo && a[j].y > k.y) { a[j + 1] = a[j]; j--; } a[j + 1] = k; }
+      return;
+    }
+    const mid = (lo + hi) >>> 1, midX = a[mid].x;
+    if (r.events) r.events.push({ merge: false, xMin: a[lo].x, xMax: a[hi - 1].x, midX });
+    solve(lo, mid, depth + 1); solve(mid, hi, depth + 1);
+    let i = lo, j = mid, k = lo;
+    while (i < mid && j < hi) t[k++] = a[i].y <= a[j].y ? a[i++] : a[j++];
+    while (i < mid) t[k++] = a[i++];
+    while (j < hi) t[k++] = a[j++];
+    for (let q = lo; q < hi; q++) a[q] = t[q];
+    if (depth === 0) { r.splitX = midX; r.stripD = Math.sqrt(r.d2); }
+    let m = 0;
+    for (let s = lo; s < hi; s++) {
+      const dx = a[s].x - midX;
+      if (dx * dx >= r.d2) continue;
+      for (let q = m - 1; q >= 0; q--) { const dy = a[s].y - t[q].y; if (dy * dy >= r.d2) break; offer(r, a[s], t[q]); }
+      t[m++] = a[s];
+    }
+    if (r.events) r.events.push({ merge: true, xMin: a[lo].x, xMax: a[hi - 1].x, midX, d: Math.sqrt(r.d2) });
+  })(0, n, 0);
+  return r;
+}
+
+const fmt = v => Number.isInteger(v) ? String(v) : v.toFixed(6);
+const pairStr = r => r.a ? `${Math.sqrt(r.d2).toFixed(6)} (${fmt(r.a.x)}, ${fmt(r.a.y)}) (${fmt(r.b.x)}, ${fmt(r.b.y)})` : 'N/A (fewer than 2 points)';
+
+function bounds() {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  if (!pts.length) { x0 = y0 = 0; x1 = y1 = 1; }
+  return { x0, y0, sx: x1 - x0 || 1, sy: y1 - y0 || 1 };
+}
+
+function draw() {
+  const W = plot.width, H = plot.height, PAD = 36, b = bounds();
+  const s = Math.min((W - 2 * PAD) / b.sx, (H - 2 * PAD) / b.sy);
+  const X = x => PAD + (x - b.x0) * s, Y = y => H - PAD - (y - b.y0) * s;
+  pg.clearRect(0, 0, W, H);
+  pg.strokeStyle = '#2a3342'; pg.lineWidth = 1; pg.strokeRect(X(b.x0), Y(b.y0 + b.sy), b.sx * s, b.sy * s);
+  const band = (x0, x1, col) => { const l = X(Math.max(x0, b.x0)), r = X(Math.min(x1, b.x0 + b.sx)); if (r > l) { pg.fillStyle = col; pg.fillRect(l, Y(b.y0 + b.sy), r - l, b.sy * s); } };
+  const vline = x => { pg.save(); pg.setLineDash([6, 4]); pg.strokeStyle = '#cfd6e0'; pg.lineWidth = 1.5; pg.beginPath(); pg.moveTo(X(x), Y(b.y0 + b.sy)); pg.lineTo(X(x), Y(b.y0)); pg.stroke(); pg.restore(); };
+
+  let status = '';
+  if (dc && dc.events && evIdx >= 0) {
+    const e = dc.events[evIdx];
+    band(e.xMin, e.xMax, 'rgba(90,169,230,.14)');
+    if (e.merge) band(e.midX - e.d, e.midX + e.d, 'rgba(227,176,75,.28)');
+    vline(e.midX);
+    status = `${e.merge ? 'Merge' : 'Split'} step ${evIdx + 1} of ${dc.events.length}` + (e.merge ? `: strip of width 2d, d = ${e.d.toFixed(4)}` : ': dividing the points at the median x');
+  } else if ($('showStrip').checked && dc && !isNaN(dc.splitX)) {
+    band(dc.splitX - dc.stripD, dc.splitX + dc.stripD, 'rgba(227,176,75,.28)');
+    vline(dc.splitX);
+    status = 'Top-level dividing line (dashed) and the strip of width 2d (amber) searched during the final merge.';
+  }
+  $('status').textContent = status;
+
+  pg.fillStyle = '#8b95a5';
+  for (const p of pts) { pg.beginPath(); pg.arc(X(p.x), Y(p.y), pts.length > 2000 ? 1.5 : 3, 0, 7); pg.fill(); }
+  if (bf && bf.a) {
+    pg.strokeStyle = BF; pg.fillStyle = BF; pg.lineWidth = 4;
+    pg.beginPath(); pg.moveTo(X(bf.a.x), Y(bf.a.y)); pg.lineTo(X(bf.b.x), Y(bf.b.y)); pg.stroke();
+    for (const p of [bf.a, bf.b]) { pg.beginPath(); pg.arc(X(p.x), Y(p.y), 5.5, 0, 7); pg.fill(); }
+  }
+  if (dc && dc.a) {
+    pg.strokeStyle = DC; pg.lineWidth = 2;
+    pg.beginPath(); pg.moveTo(X(dc.a.x), Y(dc.a.y)); pg.lineTo(X(dc.b.x), Y(dc.b.y)); pg.stroke();
+    for (const p of [dc.a, dc.b]) { pg.beginPath(); pg.arc(X(p.x), Y(p.y), 10, 0, 7); pg.stroke(); }
+  }
+  pg.font = '14px system-ui'; pg.fillStyle = BF; pg.fillText('Brute force', PAD, 20);
+  pg.fillStyle = DC; pg.fillText('Divide and conquer', PAD + 110, 20);
+}
+
+function stopAnim() { clearInterval(timer); timer = null; $('anim').textContent = 'Animate split / merge'; }
+
+function run() {
+  stopAnim(); evIdx = -1;
+  const n = Math.max(0, Math.min(20000, parseInt($('n').value) || 0));
+  pts = generate(n, $('kind').value);
+  let t0 = performance.now(); bf = brute(pts); const tb = performance.now() - t0;
+  t0 = performance.now(); divide(pts, false); const td = performance.now() - t0;
+  dc = divide(pts, n <= 2000);
+  const ok = !bf.a ? !dc.a : Math.abs(Math.sqrt(bf.d2) - Math.sqrt(dc.d2)) < 1e-9 * Math.max(1, Math.sqrt(bf.d2));
+  $('out').innerHTML = `<span class="bf">${pairStr(bf)}</span>\n<span class="dc">${pairStr(dc)}</span>\nBrute-Force: ${tb.toFixed(3)} ms, Divide-and-Conquer: ${td.toFixed(3)} ms\nAgree on minimum distance: ${ok ? 'yes' : 'NO'}`;
+  $('anim').disabled = $('step').disabled = !dc.events;
+  draw();
+}
+
+function advance() { if (!dc || !dc.events) return; evIdx++; if (evIdx >= dc.events.length) { evIdx = -1; stopAnim(); } draw(); }
+$('anim').onclick = () => {
+  if (timer) return stopAnim();
+  if (!dc || !dc.events) return;
+  evIdx = 0; draw();
+  $('anim').textContent = 'Pause';
+  timer = setInterval(advance, Math.max(20, Math.min(500, 8000 / dc.events.length)));
+};
+$('step').onclick = () => { stopAnim(); advance(); };
+$('stop').onclick = () => { stopAnim(); evIdx = -1; draw(); };
+$('showStrip').onchange = draw;
+$('gen').onclick = run;
+
+function drawChart() {
+  const W = chart.width, H = chart.height, L = 62, R = 14, T = 16, B = 42, w = W - L - R, h = H - T - B, log = $('log').checked;
+  cg.clearRect(0, 0, W, H); cg.font = '12px system-ui'; cg.fillStyle = '#9aa4b2'; cg.strokeStyle = '#2a3342';
+  if (!rows.length) { cg.fillText('Press "Run benchmark"', L, T + 20); return; }
+  const tf = v => log ? Math.log10(Math.max(v, 1e-3)) : v;
+  const ns = rows.map(r => r.n), ys = rows.flatMap(r => [r.b, r.d]);
+  const x0 = log ? tf(Math.min(...ns)) : 0, x1 = tf(Math.max(...ns)), y0 = log ? tf(Math.min(...ys)) : 0, y1 = tf(Math.max(...ys));
+  const X = v => L + (tf(v) - x0) / ((x1 - x0) || 1) * w, Y = v => T + h - (tf(v) - y0) / ((y1 - y0) || 1) * h;
+  for (let i = 0; i <= 4; i++) {
+    const gy = T + h - h * i / 4, vy = y0 + (y1 - y0) * i / 4, vx = x0 + (x1 - x0) * i / 4;
+    cg.beginPath(); cg.moveTo(L, gy); cg.lineTo(L + w, gy); cg.stroke();
+    cg.fillText((log ? Math.pow(10, vy) : vy).toPrecision(3), 4, gy + 4);
+    cg.fillText((log ? Math.pow(10, vx) : vx).toPrecision(3), L + w * i / 4 - 14, T + h + 16);
+  }
+  cg.fillText('N', L + w / 2, H - 6); cg.fillText('ms', 4, T + 4);
+  [['b', BF, 'Brute force'], ['d', DC, 'Divide and conquer']].forEach(([k, col, name], si) => {
+    cg.strokeStyle = col; cg.fillStyle = col; cg.lineWidth = 2; cg.beginPath();
+    rows.forEach((r, i) => { const px = X(r.n), py = Y(r[k]); i ? cg.lineTo(px, py) : cg.moveTo(px, py); }); cg.stroke();
+    rows.forEach(r => { cg.beginPath(); cg.arc(X(r.n), Y(r[k]), 3.5, 0, 7); cg.fill(); });
+    cg.fillText(name, L + 12, T + 14 + si * 16);
+  });
+  cg.strokeStyle = '#2a3342'; cg.lineWidth = 1;
+}
+$('log').onchange = drawChart;
+
+$('bench').onclick = () => {
+  const sizes = [100, 200, 500, 1000, 2000, 5000, 10000, 20000]; rows = []; $('bench').disabled = true; let i = 0;
+  const best = (f, reps) => { let m = Infinity; for (let k = 0; k < reps; k++) { const t = performance.now(); f(); m = Math.min(m, performance.now() - t); } return m; };
+  (function next() {
+    if (i >= sizes.length) { $('bench').disabled = false; return; }
+    const n = sizes[i++], p = generate(n, 'float');
+    rows.push({ n, b: best(() => brute(p), n >= 20000 ? 1 : 3), d: best(() => divide(p, false), 5) });
+    drawChart(); setTimeout(next, 0);
+  })();
+};
+
+run(); drawChart();
+</script>
+</body>
+</html>

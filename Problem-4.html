@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Exam timetable</title>
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--ink:#1c2430;--mut:#6b7686;--line:#dde2ea}
+@media(prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b212a;--ink:#e8ecf2;--mut:#98a3b3;--line:#2c3542}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:24px 16px 48px}h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:0 0 10px}
+p.s{color:var(--mut);margin:0 0 18px}section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;cursor:pointer}
+button.on{background:var(--ink);color:var(--bg)}button:focus-visible{outline:2px solid #3b82f6}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left}
+.grid td,.grid th{text-align:center;border:1px solid var(--line);min-width:42px;height:34px}.grid td{color:#111;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.two{grid-template-columns:1fr}}
+svg{width:100%;height:auto;display:block}.wrap{overflow-x:auto}input[type=range]{flex:1;min-width:120px}
+.ok{color:#15803d;font-weight:600}.no{color:#b45309;font-weight:600}
+</style></head><body><main>
+<h1>Exam timetable</h1><p class="s" id="sub"></p>
+<section><h2>Algorithm comparison</h2><div class="wrap"><table id="tbl"></table></div></section>
+<section><div class="row" id="tabs"></div>
+<div class="row"><button id="play">Play assignment</button><button id="reset">Show final</button>
+<input type="range" id="step" min="0" value="0" aria-label="assignment step"><span id="lbl"></span></div>
+<div class="two"><div><h2>Conflict graph</h2><svg id="g" viewBox="0 0 560 560"></svg></div>
+<div><h2>Timetable</h2><div class="wrap"><table class="grid" id="grid"></table></div></div></div></section>
+<section><h2>Scaling with N (random graphs, same density)</h2><div class="two"><svg id="c1" viewBox="0 0 440 280"></svg><svg id="c2" viewBox="0 0 440 280"></svg></div></section>
+</main><script>
+const D={"n": 45, "R": 6, "lb": 8, "edges": [[0, 1], [0, 4], [0, 5], [0, 6], [0, 9], [0, 10], [0, 12], [0, 14], [0, 15], [0, 17], [0, 20], [0, 21], [0, 24], [0, 25], [0, 26], [0, 27], [0, 28], [0, 29], [0, 30], [0, 31], [0, 32], [0, 33], [0, 34], [0, 35], [0, 36], [0, 40], [0, 43], [0, 44], [1, 5], [1, 8], [1, 14], [1, 15], [1, 17], [1, 18], [1, 22], [1, 23], [1, 27], [1, 28], [1, 29], [1, 30], [1, 34], [1, 35], [1, 41], [2, 3], [2, 4], [2, 7], [2, 15], [2, 16], [2, 19], [2, 21], [2, 22], [2, 23], [2, 27], [2, 28], [2, 29], [2, 30], [2, 36], [2, 39], [2, 40], [2, 41], [2, 43], [2, 44], [3, 5], [3, 6], [3, 7], [3, 9], [3, 10], [3, 12], [3, 13], [3, 14], [3, 15], [3, 16], [3, 17], [3, 18], [3, 19], [3, 22], [3, 25], [3, 26], [3, 27], [3, 29], [3, 33], [3, 37], [3, 39], [3, 41], [3, 43], [3, 44], [4, 7], [4, 9], [4, 12], [4, 13], [4, 14], [4, 16], [4, 20], [4, 25], [4, 26], [4, 27], [4, 29], [4, 30], [4, 31], [4, 33], [4, 34], [4, 35], [4, 38], [4, 39], [4, 40], [4, 43], [4, 44], [5, 9], [5, 12], [5, 14], [5, 16], [5, 17], [5, 19], [5, 23], [5, 24], [5, 25], [5, 30], [5, 32], [5, 33], [5, 34], [5, 38], [5, 41], [5, 43], [5, 44], [6, 7], [6, 11], [6, 12], [6, 15], [6, 17], [6, 18], [6, 20], [6, 21], [6, 23], [6, 24], [6, 25], [6, 26], [6, 28], [6, 30], [6, 33], [6, 34], [6, 35], [6, 36], [6, 38], [6, 39], [6, 41], [6, 43], [6, 44], [7, 8], [7, 12], [7, 13], [7, 19], [7, 21], [7, 22], [7, 23], [7, 24], [7, 26], [7, 30], [7, 31], [7, 32], [7, 33], [7, 36], [7, 37], [7, 41], [7, 42], [7, 43], [7, 44], [8, 10], [8, 11], [8, 13], [8, 15], [8, 17], [8, 20], [8, 22], [8, 26], [8, 27], [8, 30], [8, 32], [8, 34], [8, 35], [8, 42], [8, 43], [8, 44], [9, 12], [9, 13], [9, 19], [9, 20], [9, 21], [9, 22], [9, 23], [9, 25], [9, 27], [9, 28], [9, 29], [9, 30], [9, 31], [9, 33], [9, 34], [9, 36], [9, 37], [9, 41], [9, 44], [10, 11], [10, 12], [10, 13], [10, 14], [10, 18], [10, 20], [10, 21], [10, 24], [10, 27], [10, 30], [10, 38], [10, 39], [10, 40], [10, 43], [11, 13], [11, 15], [11, 17], [11, 21], [11, 24], [11, 29], [11, 32], [11, 34], [11, 35], [11, 36], [11, 37], [11, 40], [11, 42], [11, 43], [11, 44], [12, 13], [12, 15], [12, 16], [12, 17], [12, 18], [12, 22], [12, 23], [12, 25], [12, 27], [12, 33], [12, 37], [12, 38], [12, 39], [12, 41], [13, 16], [13, 19], [13, 21], [13, 23], [13, 24], [13, 25], [13, 26], [13, 27], [13, 30], [13, 32], [13, 33], [13, 34], [13, 35], [13, 41], [13, 43], [14, 16], [14, 17], [14, 20], [14, 21], [14, 22], [14, 23], [14, 24], [14, 30], [14, 35], [14, 44], [15, 16], [15, 20], [15, 22], [15, 23], [15, 24], [15, 27], [15, 28], [15, 30], [15, 34], [15, 37], [15, 38], [15, 40], [15, 41], [15, 44], [16, 19], [16, 23], [16, 25], [16, 27], [16, 30], [16, 31], [16, 35], [16, 38], [16, 39], [16, 42], [16, 44], [17, 19], [17, 23], [17, 25], [17, 26], [17, 28], [17, 30], [17, 33], [17, 34], [17, 35], [17, 36], [17, 37], [17, 38], [17, 39], [17, 42], [17, 43], [18, 22], [18, 24], [18, 26], [18, 27], [18, 28], [18, 29], [18, 30], [18, 31], [18, 33], [18, 35], [18, 37], [18, 41], [18, 44], [19, 20], [19, 23], [19, 26], [19, 28], [19, 29], [19, 31], [19, 32], [19, 33], [19, 34], [19, 37], [19, 38], [19, 40], [19, 41], [19, 42], [19, 43], [19, 44], [20, 26], [20, 30], [20, 31], [20, 34], [20, 38], [20, 39], [20, 40], [20, 41], [20, 43], [21, 26], [21, 28], [21, 32], [21, 33], [21, 35], [21, 36], [21, 38], [21, 40], [21, 41], [21, 42], [22, 23], [22, 25], [22, 27], [22, 28], [22, 29], [22, 31], [22, 32], [22, 36], [22, 37], [22, 38], [22, 40], [22, 41], [23, 24], [23, 26], [23, 34], [23, 35], [23, 36], [23, 38], [23, 39], [23, 41], [23, 44], [24, 25], [24, 26], [24, 27], [24, 31], [24, 33], [24, 34], [24, 35], [24, 37], [25, 26], [25, 33], [25, 36], [25, 37], [25, 40], [25, 41], [26, 27], [26, 28], [26, 30], [26, 31], [26, 33], [26, 34], [26, 35], [26, 38], [26, 39], [26, 42], [26, 44], [27, 28], [27, 31], [27, 36], [27, 44], [28, 29], [28, 33], [28, 34], [28, 38], [28, 40], [28, 41], [28, 42], [28, 44], [29, 30], [29, 31], [29, 42], [29, 44], [30, 31], [30, 36], [30, 41], [30, 42], [31, 36], [31, 37], [31, 39], [31, 41], [31, 42], [31, 43], [31, 44], [32, 33], [32, 34], [32, 35], [32, 36], [32, 37], [32, 40], [32, 42], [33, 35], [33, 37], [33, 39], [33, 42], [33, 43], [34, 35], [34, 36], [34, 37], [34, 38], [34, 40], [34, 43], [35, 39], [35, 42], [35, 44], [36, 38], [36, 39], [36, 40], [36, 41], [37, 39], [37, 40], [37, 42], [38, 39], [38, 41], [38, 42], [38, 44], [39, 41], [39, 44], [40, 41], [40, 44], [41, 43], [41, 44], [42, 43]], "best": "Exact B&B", "bench": [{"n": 20, "Welsh-Powell": {"k": 6, "time": 2.2753999999736152e-05, "opt": true}, "DSatur": {"k": 6, "time": 0.00014185300000235657, "opt": true}, "Exact B&B": {"k": 6, "time": 3.7270000063927e-06, "opt": true}}, {"n": 30, "Welsh-Powell": {"k": 9, "time": 2.7938000002336594e-05, "opt": false}, "DSatur": {"k": 8, "time": 0.0003144949999978053, "opt": false}, "Exact B&B": {"k": 7, "time": 0.002815035000004684, "opt": true}}, {"n": 40, "Welsh-Powell": {"k": 9, "time": 4.0349000002493085e-05, "opt": false}, "DSatur": {"k": 8, "time": 0.0004905679999964718, "opt": false}, "Exact B&B": {"k": 8, "time": 0.002039213000003315, "opt": true}}, {"n": 50, "Welsh-Powell": {"k": 11, "time": 5.4728999998587824e-05, "opt": false}, "DSatur": {"k": 11, "time": 0.0007599260000006325, "opt": false}, "Exact B&B": {"k": 9, "time": 0.15011399400000158, "opt": true}}], "algos": {"Welsh-Powell": {"k": 11, "time": 5.614099999462496e-05, "optimal": false, "slots": [[1, 9, 17, 38, 42], [10, 15, 16, 27, 33, 44], [14, 18, 21, 23, 45], [4, 22, 31, 35], [2, 5, 7, 11, 20], [6, 8, 29, 36], [12, 24, 32, 34], [13, 25, 37, 43], [26, 28, 30, 39], [3, 19], [40, 41]], "col": [0, 4, 9, 3, 4, 5, 4, 5, 0, 1, 4, 6, 7, 2, 1, 1, 0, 2, 9, 4, 2, 3, 2, 6, 7, 8, 1, 8, 5, 8, 3, 6, 1, 6, 3, 5, 7, 0, 8, 10, 10, 0, 7, 1, 2], "order": [0, 41, 16, 37, 8, 26, 9, 15, 43, 14, 32, 44, 17, 13, 22, 20, 3, 34, 30, 21, 6, 19, 4, 10, 1, 7, 28, 35, 5, 23, 33, 31, 11, 12, 36, 24, 42, 38, 27, 25, 29, 2, 18, 39, 40]}, "DSatur": {"k": 10, "time": 0.0006112860000015985, "optimal": false, "slots": [[1, 4, 12, 39], [10, 15, 16, 27, 33, 44], [14, 18, 21, 23, 45], [5, 7, 9, 20], [13, 25, 29, 37], [11, 17, 30, 34, 35, 42], [3, 26, 32, 36], [6, 8, 19, 40, 41], [22, 24, 28, 31, 38], [2, 43]], "col": [0, 9, 6, 0, 3, 7, 3, 7, 3, 1, 5, 0, 4, 2, 1, 1, 5, 2, 7, 3, 2, 8, 2, 8, 4, 6, 1, 8, 4, 5, 8, 6, 1, 5, 5, 6, 4, 8, 0, 7, 7, 5, 9, 1, 2], "order": [0, 26, 44, 6, 28, 17, 34, 33, 15, 12, 25, 3, 41, 4, 40, 2, 19, 37, 7, 39, 9, 13, 21, 36, 30, 31, 5, 16, 24, 35, 11, 42, 32, 38, 23, 8, 1, 22, 18, 27, 14, 29, 43, 20, 10]}, "Exact B&B": {"k": 9, "time": 0.03777598899999646, "optimal": true, "slots": [[1, 4, 24, 43], [10, 11, 16, 27, 33], [14, 18, 21, 45], [5, 6, 7, 9, 38], [13, 29, 36, 37, 44], [15, 28, 30, 34, 35, 42], [2, 3, 12, 26, 32, 39], [8, 17, 19, 41], [20, 22, 23, 25, 31, 40]], "col": [0, 6, 6, 0, 3, 3, 3, 7, 3, 1, 1, 6, 4, 2, 5, 1, 7, 2, 7, 8, 2, 8, 8, 0, 8, 6, 1, 5, 4, 5, 8, 6, 1, 5, 5, 4, 4, 3, 6, 8, 7, 5, 0, 4, 2], "order": [0, 26, 44, 6, 28, 17, 34, 33, 15, 12, 25, 3, 41, 4, 40, 2, 19, 7, 13, 23, 21, 37, 9, 36, 30, 31, 18, 42, 11, 35, 24, 27, 16, 38, 5, 39, 8, 10, 43, 20, 1, 14, 32, 29, 22]}}},N=D.n,R=D.R,names=Object.keys(D.algos);let cur=D.best,step=N,timer=null;
+const col=s=>`hsl(${(s*137.5)%360} 65% 70%)`,$=id=>document.getElementById(id),NS="http://www.w3.org/2000/svg";
+const ac={"Welsh-Powell":"#e08a1e","DSatur":"#2b7bd6","Exact B&B":"#1f9d6b"};
+$("sub").textContent=`${N} courses, ${D.edges.length} conflicts, at most ${R} exams per slot. Lower bound: ${D.lb} slots.`;
+$("tbl").innerHTML="<tr><th>Algorithm</th><th>Slots</th><th>Time</th><th>Proven optimal</th></tr>"+names.map(n=>{const a=D.algos[n];
+return `<tr><td>${n}</td><td>${a.k}</td><td>${a.time<1?(a.time*1000).toFixed(2)+" ms":a.time.toFixed(2)+" s"}</td><td class="${a.optimal?'ok':'no'}">${a.optimal?"Yes":"No, upper bound only"}</td></tr>`}).join("");
+// force layout
+const P=[];for(let i=0;i<N;i++){const t=2*Math.PI*i/N;P.push([280+200*Math.cos(t),280+200*Math.sin(t)])}
+if(N>2){const nb=Array.from({length:N},()=>[]);D.edges.forEach(([u,v])=>{nb[u].push(v);nb[v].push(u)});
+for(let it=0;it<300;it++){const F=P.map(()=>[0,0]);
+for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){let dx=P[i][0]-P[j][0],dy=P[i][1]-P[j][1],d2=dx*dx+dy*dy+.01,f=2500/d2,d=Math.sqrt(d2);
+F[i][0]+=f*dx/d;F[i][1]+=f*dy/d;F[j][0]-=f*dx/d;F[j][1]-=f*dy/d}
+D.edges.forEach(([u,v])=>{let dx=P[v][0]-P[u][0],dy=P[v][1]-P[u][1],d=Math.hypot(dx,dy)+.01,f=(d-70)*.02;
+F[u][0]+=f*dx/d;F[u][1]+=f*dy/d;F[v][0]-=f*dx/d;F[v][1]-=f*dy/d});
+for(let i=0;i<N;i++){F[i][0]+=(280-P[i][0])*.01;F[i][1]+=(280-P[i][1])*.01;
+P[i][0]=Math.min(540,Math.max(20,P[i][0]+Math.max(-8,Math.min(8,F[i][0]))));P[i][1]=Math.min(540,Math.max(20,P[i][1]+Math.max(-8,Math.min(8,F[i][1]))))}}}
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
+const g=$("g"),nodes=[];D.edges.forEach(([u,v])=>el("line",{x1:P[u][0],y1:P[u][1],x2:P[v][0],y2:P[v][1],stroke:"#8893a3","stroke-opacity":.5},g));
+const rad=Math.max(8,Math.min(16,260/Math.sqrt(N+1)/1.6));
+for(let i=0;i<N;i++){const c=el("circle",{cx:P[i][0],cy:P[i][1],r:rad,stroke:"#333","stroke-width":1},g),
+t=el("text",{x:P[i][0],y:P[i][1]+4,"text-anchor":"middle","font-size":rad>11?11:9,fill:"#111"},g);t.textContent=i+1;nodes.push(c)}
+function draw(){const a=D.algos[cur],done=new Set(a.order.slice(0,step));
+nodes.forEach((c,i)=>c.setAttribute("fill",done.has(i)?col(a.col[i]):"#e5e7eb"));
+let h="<tr><th></th>"+Array.from({length:R},(_,i)=>`<th>Hall ${i+1}</th>`).join("")+"</tr>";
+const per=Array.from({length:a.k},()=>[]);a.order.slice(0,step).forEach(v=>per[a.col[v]].push(v+1));
+per.forEach((cs,s)=>{h+=`<tr><th>Slot ${s+1}</th>`+Array.from({length:R},(_,j)=>cs[j]?`<td style="background:${col(s)}">${cs[j]}</td>`:"<td></td>").join("")+"</tr>"});
+$("grid").innerHTML=h;$("step").value=step;$("lbl").textContent=`${step}/${N} assigned`}
+$("tabs").innerHTML=names.map(n=>`<button data-n="${n}">${n}</button>`).join("");
+function tabs(){document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.n==cur))}
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{cur=b.dataset.n;step=N;stop();tabs();draw()});
+$("step").max=N;$("step").oninput=e=>{stop();step=+e.target.value;draw()};
+function stop(){clearInterval(timer);timer=null;$("play").textContent="Play assignment"}
+$("play").onclick=()=>{if(timer)return stop();if(step>=N)step=0;$("play").textContent="Pause";
+timer=setInterval(()=>{step++;draw();if(step>=N)stop()},Math.max(60,1500/N*4))};
+$("reset").onclick=()=>{stop();step=N;draw()};
+function chart(id,key,title,fmt){const s=$(id),W=440,H=280,m={l:52,r:12,t:28,b:36};
+const xs=D.bench.map(b=>b.n);if(!xs.length)return;const all=D.bench.flatMap(b=>names.map(n=>b[n][key]));
+const ymax=Math.max(...all)*1.1||1,ymin=key=="k"?Math.min(...all)-1:0;
+const X=v=>m.l+(xs.length>1?(v-xs[0])/(xs[xs.length-1]-xs[0]):.5)*(W-m.l-m.r),Y=v=>H-m.b-(v-ymin)/(ymax-ymin)*(H-m.t-m.b);
+el("text",{x:m.l,y:16,"font-size":13,fill:"currentColor"},s).textContent=title;
+for(let i=0;i<=4;i++){const v=ymin+(ymax-ymin)*i/4;el("line",{x1:m.l,x2:W-m.r,y1:Y(v),y2:Y(v),stroke:"#8893a3","stroke-opacity":.25},s);
+el("text",{x:m.l-6,y:Y(v)+4,"text-anchor":"end","font-size":10,fill:"currentColor"},s).textContent=fmt(v)}
+xs.forEach(x=>el("text",{x:X(x),y:H-m.b+14,"text-anchor":"middle","font-size":10,fill:"currentColor"},s).textContent=x);
+el("text",{x:W/2,y:H-4,"text-anchor":"middle","font-size":11,fill:"currentColor"},s).textContent="N (courses)";
+names.forEach((n,i)=>{const pts=D.bench.map(b=>[X(b.n),Y(b[n][key])]);
+el("polyline",{points:pts.join(" "),fill:"none",stroke:ac[n],"stroke-width":2,"stroke-dasharray":i==1?"6 3":""},s);
+pts.forEach(p=>el("circle",{cx:p[0],cy:p[1],r:3,fill:ac[n]},s));
+el("rect",{x:W-130,y:6+i*13,width:9,height:9,fill:ac[n]},s);el("text",{x:W-117,y:15+i*13,"font-size":10,fill:"currentColor"},s).textContent=n})}
+chart("c1","k","Slots used",v=>Math.round(v));chart("c2","time","Running time (s)",v=>v<.01?v.toExponential(0):v.toFixed(2));
+tabs();draw();
+</script></body></html>
